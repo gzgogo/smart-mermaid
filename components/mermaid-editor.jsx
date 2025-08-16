@@ -128,18 +128,19 @@ export function MermaidEditor({ code, onChange, streamingContent, isStreaming, e
   return (
     <div className="flex flex-col h-full">
       {/* 流式内容显示区域 - 固定高度 */}
-      <div className="mb-4">
+      {/* <div className="mb-4">
         <StreamingDisplay
           content={isFixing ? fixingContent : streamingContent}
           isStreaming={isStreaming || isFixing}
           isFixing={isFixing}
         />
-      </div>
+      </div> */}
       
       {/* 编辑器标题栏 - 固定高度 */}
       <div className="flex justify-between items-center h-8 mb-2">
         <h3 className="text-sm font-medium">Mermaid 代码</h3>
         <div className="flex items-center gap-2">
+          
           <Button
             variant="outline"
             size="sm"

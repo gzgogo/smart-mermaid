@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Wand2, PanelLeftClose, PanelLeftOpen, Monitor, FileImage, RotateCcw, Maximize, RotateCw } from "lucide-react";
+import { Wand2, PanelLeftClose, PanelLeftOpen, Monitor, FileImage, RotateCcw, Maximize, RotateCw, MessageSquare, History } from "lucide-react";
 import { Header } from "@/components/header";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { TextInput } from "@/components/text-input";
@@ -14,6 +14,7 @@ import { DiagramTypeSelector } from "@/components/diagram-type-selector";
 import { ModelSelector } from "@/components/model-selector";
 import { MermaidEditor } from "@/components/mermaid-editor";
 import { MermaidRenderer } from "@/components/mermaid-renderer";
+import { ConversationHistory } from "@/components/conversation-history";
 // import { ExcalidrawRenderer } from "@/components/excalidraw-renderer";
 import { generateMermaidFromText } from "@/lib/ai-service";
 import { isWithinCharLimit } from "@/lib/utils";
@@ -31,7 +32,7 @@ import dynamic from "next/dynamic";
 
 const ExcalidrawRenderer = dynamic(() => import("@/components/excalidraw-renderer"), { ssr: false });
 
-const usageLimit = parseInt(process.env.NEXT_PUBLIC_DAILY_USAGE_LIMIT || "5");
+const usageLimit = parseInt(process.env.NEXT_PUBLIC_DAILY_USAGE_LIMIT || "50");
 
 // Usage tracking functions
 const checkUsageLimit = () => {
@@ -101,6 +102,11 @@ export default function Home() {
   // 错误状态管理
   const [errorMessage, setErrorMessage] = useState(null);
   const [hasError, setHasError] = useState(false);
+
+  // 连续对话状态管理
+  const [conversations, setConversations] = useState([]);
+  const [showConversationHistory, setShowConversationHistory] = useState(false);
+  const [conversationContext, setConversationContext] = useState([]);
   
   const maxChars = parseInt(process.env.NEXT_PUBLIC_MAX_CHARS || "20000");
 
@@ -111,7 +117,96 @@ export default function Home() {
     setPasswordVerified(isPasswordVerified());
     // Check custom AI config status
     setHasCustomConfig(hasCustomAIConfig());
+    // Load conversation history from localStorage
+    loadConversationHistory();
   }, []);
+
+  // 加载对话历史
+  const loadConversationHistory = () => {
+    try {
+      const savedConversations = localStorage.getItem('conversationHistory');
+      if (savedConversations) {
+        setConversations(JSON.parse(savedConversations));
+      }
+    } catch (error) {
+      console.error('Failed to load conversation history:', error);
+    }
+  };
+
+  // 保存对话历史
+  const saveConversationHistory = (newConversations) => {
+    try {
+      localStorage.setItem('conversationHistory', JSON.stringify(newConversations));
+    } catch (error) {
+      console.error('Failed to save conversation history:', error);
+    }
+  };
+
+  // 添加新对话
+  const addConversation = (userMessage, mermaidCode, diagramType) => {
+    const newConversation = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      userMessage,
+      mermaidCode,
+      diagramType,
+    };
+    
+    const updatedConversations = [...conversations, newConversation];
+    setConversations(updatedConversations);
+    saveConversationHistory(updatedConversations);
+    
+    // 更新对话上下文（保留最近的3轮对话）
+    const contextMessages = updatedConversations.slice(-3).flatMap(conv => [
+      { role: "user", content: conv.userMessage },
+      { role: "assistant", content: `生成的Mermaid代码：\n${conv.mermaidCode}` }
+    ]);
+    setConversationContext(contextMessages);
+  };
+
+  // 清空对话历史
+  const clearConversationHistory = () => {
+    setConversations([]);
+    setConversationContext([]);
+    localStorage.removeItem('conversationHistory');
+    toast.success("对话历史已清空");
+  };
+
+  // 导出对话历史
+  const exportConversationHistory = () => {
+    if (conversations.length === 0) {
+      toast.error("没有对话记录可导出");
+      return;
+    }
+
+    const exportData = {
+      exportTime: new Date().toISOString(),
+      conversations: conversations.map(conv => ({
+        ...conv,
+        timestamp: new Date(conv.timestamp).toISOString()
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
+      type: 'application/json' 
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversation-history-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast.success("对话历史已导出");
+  };
+
+  // 点击历史消息时填充到输入框
+  const handleHistoryMessageClick = (message) => {
+    setInputText(message);
+    toast.success("已将消息填充到输入框");
+  };
 
   const handleTextChange = (text) => {
     setInputText(text);
@@ -263,7 +358,8 @@ export default function Home() {
       const { mermaidCode: generatedCode, error } = await generateMermaidFromText(
         inputText,
         diagramType,
-        handleStreamChunk
+        handleStreamChunk,
+        conversationContext // 传递对话上下文
       );
 
       if (error) {
@@ -283,6 +379,10 @@ export default function Home() {
       }
 
       setMermaidCode(generatedCode);
+      
+      // 添加到对话历史
+      addConversation(inputText, generatedCode, diagramType);
+      
       toast.success("图表生成成功");
     } catch (error) {
       console.error("Generation error:", error);
@@ -315,6 +415,45 @@ export default function Home() {
             <div className={`${
               isLeftPanelCollapsed ? 'hidden md:hidden' : 'col-span-1'
             } flex flex-col h-full overflow-hidden`}>
+              
+              {/* 历史按钮 */}
+              <div className="h-auto flex items-center justify-between gap-2 flex-shrink-0 pb-2 mb-4">
+                <h2 className="text-lg font-semibold">
+                  {showConversationHistory ? "对话历史" : "输入内容"}
+                </h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowConversationHistory(!showConversationHistory)}
+                  className="h-9"
+                  title={showConversationHistory ? "返回输入" : "查看对话历史"}
+                >
+                  {showConversationHistory ? (
+                    <>
+                      <MessageSquare className="h-4 w-4" />
+                      <span className="hidden sm:inline ml-2">返回输入</span>
+                    </>
+                  ) : (
+                    <>
+                      <History className="h-4 w-4" />
+                      <span className="hidden sm:inline ml-2">历史({conversations.length})</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* 对话历史面板或输入面板切换 */}
+              {showConversationHistory ? (
+                <div className="flex-1 overflow-hidden">
+                  <ConversationHistory
+                    conversations={conversations}
+                    onClear={clearConversationHistory}
+                    onExport={exportConversationHistory}
+                    onMessageClick={handleHistoryMessageClick}
+                    currentInputText={inputText}
+                  />
+                </div>
+              ) : (
               
               <Tabs defaultValue="manual" className="flex flex-col h-full">
                 {/* 固定高度的顶部控制栏 */}
@@ -385,6 +524,7 @@ export default function Home() {
                   </div>
                 </div>
               </Tabs>
+              )}
             </div>
             
             {/* 右侧面板 */}
@@ -413,7 +553,7 @@ export default function Home() {
                 </Button>
 
                 <div className="flex items-center gap-2">
-                  <Button
+                  {/* <Button
                     variant="outline"
                     size="sm"
                     onClick={handleAutoFixMermaid}
@@ -432,7 +572,7 @@ export default function Home() {
                         <span className="hidden lg:inline ml-2">AI修复</span>
                       </>
                     )}
-                  </Button>
+                  </Button> */}
 
                   <Button
                     variant="outline"
