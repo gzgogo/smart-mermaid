@@ -1,184 +1,126 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, Copy, Download, MessageSquare, User, Bot } from "lucide-react";
-import { copyToClipboard } from "@/lib/utils";
-import { toast } from "sonner";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { MessageSquare, Trash2, X, History } from "lucide-react";
 
 export function ConversationHistory({ 
-  conversations, 
-  onClear, 
-  onExport,
-  onMessageClick,
-  currentInputText,
+  conversations,
+  currentConversationId,
+  onSelectConversation,
+  onDeleteConversation,
+  buttonVariant = "outline",
+  buttonSize = "sm",
+  buttonClassName = "",
+  showCount = true,
   className = ""
 }) {
-  const scrollAreaRef = useRef(null);
-  const [copiedIndex, setCopiedIndex] = useState(null);
+  const [isOpen, setIsOpen] = useState(false);
 
-  // 自动滚动到底部
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      }
-    }
-  }, [conversations]);
-
-  const handleCopyMessage = async (text, index) => {
-    const success = await copyToClipboard(text);
-    if (success) {
-      setCopiedIndex(index);
-      toast.success("已复制到剪贴板");
-      setTimeout(() => setCopiedIndex(null), 2000);
-    } else {
-      toast.error("复制失败");
-    }
-  };
-
-  const handleExportConversation = () => {
-    if (conversations.length === 0) {
-      toast.error("没有对话记录可导出");
-      return;
-    }
-    onExport();
-  };
-
-  const formatTimestamp = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('zh-CN', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  const handleSelectAndClose = (conversationId) => {
+    onSelectConversation(conversationId);
+    setIsOpen(false);
   };
 
   return (
-    <Card className={`flex flex-col h-full ${className}`}>
-      <div className="flex justify-between items-center p-4 border-b">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4" />
-          <h3 className="text-sm font-medium">对话历史</h3>
-          <span className="text-xs text-muted-foreground">
-            ({conversations.length}条)
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleExportConversation}
-            disabled={conversations.length === 0}
-            className="h-8 w-8 p-0"
-            title="导出对话"
-          >
-            <Download className="h-3 w-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClear}
-            disabled={conversations.length === 0}
-            className="h-8 w-8 p-0"
-            title="清空对话"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
+    <>
+      {/* 历史对话入口按钮 */}
+      <Button
+        variant={buttonVariant}
+        size={buttonSize}
+        onClick={() => setIsOpen(true)}
+        className={`${buttonClassName}`}
+        title="查看对话历史"
+      >
+        <History className="h-3 w-3" />
+        <span className="hidden sm:inline ml-2">
+          历史{showCount && `(${conversations.length})`}
+        </span>
+      </Button>
 
-      <CardContent className="flex-1 p-0 overflow-hidden">
-        <ScrollArea ref={scrollAreaRef} className="h-full">
-          <div className="p-4 space-y-4">
-            {conversations.length === 0 ? (
-              <div className="text-center text-muted-foreground text-sm py-8">
-                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>暂无对话记录</p>
-                <p className="text-xs mt-1">开始输入内容生成图表</p>
-              </div>
-            ) : (
-              conversations.map((conversation, index) => (
-                <div key={conversation.id} className="space-y-3">
-                  {/* 用户消息 */}
-                  <div className="flex gap-3">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-1">
-                      <User className="h-3 w-3 text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-blue-600">用户</span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatTimestamp(conversation.timestamp)}
-                        </span>
-                      </div>
-                      <div 
-                        className="bg-blue-50 rounded-lg p-3 cursor-pointer hover:bg-blue-100 transition-colors group relative"
-                        onClick={() => onMessageClick?.(conversation.userMessage)}
-                      >
-                        <p className="text-sm text-blue-900 whitespace-pre-wrap break-words">
-                          {conversation.userMessage}
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCopyMessage(conversation.userMessage, `user-${index}`);
-                          }}
-                          className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* AI回复 */}
-                  <div className="flex gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-1">
-                      <Bot className="h-3 w-3 text-green-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-medium text-green-600">AI助手</span>
-                        <span className="text-xs text-muted-foreground">
-                          图表类型: {conversation.diagramType === 'auto' ? '自动识别' : conversation.diagramType}
-                        </span>
-                      </div>
-                      <div className="bg-green-50 rounded-lg p-3 group relative">
-                        <div className="text-xs text-green-700 mb-2 font-mono">
-                          生成的Mermaid代码：
-                        </div>
-                        <pre className="text-xs bg-white rounded border p-2 overflow-x-auto whitespace-pre-wrap break-words text-gray-800">
-                          {conversation.mermaidCode}
-                        </pre>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCopyMessage(conversation.mermaidCode, `ai-${index}`);
-                          }}
-                          className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 分隔线 */}
-                  {index < conversations.length - 1 && (
-                    <hr className="border-gray-200" />
-                  )}
+      {/* 对话历史弹窗 */}
+      {isOpen && (
+        <>
+          {/* 背景遮罩 */}
+          <div 
+            className="fixed inset-0 bg-black/20 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+          
+          {/* 弹出面板 */}
+          <div className="fixed left-4 top-16 bottom-8 w-96 z-50 box-border">
+            <Card className="h-full flex flex-col relative bg-white w-full box-border">
+              {/* 关闭按钮 */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsOpen(false)}
+                className="absolute top-2 right-2 h-8 w-8 p-0 z-10"
+                title="关闭"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+              
+              {/* 标题栏 */}
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  <h3 className="text-sm font-medium">对话历史</h3>
+                  <span className="text-xs text-muted-foreground">
+                    ({conversations.length}个)
+                  </span>
                 </div>
-              ))
-            )}
+              </CardHeader>
+
+              {/* 对话列表 */}
+              <CardContent className="flex-1 p-0 overflow-hidden">
+                <div className="h-full overflow-y-auto">
+                  <div className="p-4 space-y-2">
+                    {conversations.length === 0 ? (
+                      <div className="text-center text-muted-foreground text-sm py-8">
+                        <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        <p>暂无对话</p>
+                        <p className="text-xs mt-1">在主界面开始新的图表对话</p>
+                      </div>
+                    ) : (
+                      conversations.map((conversation) => (
+                        <div
+                          key={conversation.id}
+                          className={`group p-3 rounded-lg cursor-pointer transition-colors relative hover:bg-gray-50 ${
+                            currentConversationId === conversation.id
+                              ? 'bg-gray-100 border border-gray-200'
+                              : 'bg-gray-50'
+                          }`}
+                          onClick={() => handleSelectAndClose(conversation.id)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-gray-900 truncate flex-1 pr-2">
+                              {conversation.title}
+                            </h4>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteConversation(conversation.id);
+                              }}
+                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                              title="删除对话"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
+        </>
+      )}
+    </>
   );
 }

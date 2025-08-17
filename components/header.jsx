@@ -19,7 +19,7 @@ export function Header({
       <div className="flex h-16 items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-2">
           <FileCode2 className="h-6 w-6" />
-          <span className="text-lg font-bold">Smart Mermaid</span>
+          <span className="text-lg font-bold">Chat2Flow</span>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

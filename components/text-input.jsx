@@ -44,7 +44,7 @@ export function TextInput({ onGenerate, isGenerating, diagramType, onDiagramType
       <div className="flex-1 min-h-0 mb-4">
         <Textarea
           ref={textareaRef}
-          placeholder="请在此输入或粘贴文本内容..."
+          placeholder="描述你的流程、数据或想法，例如：用户注册流程图、项目开发时间线、公司组织结构图..."
           className="w-full h-full font-mono text-sm overflow-y-auto resize-none !outline-none !ring-0 !border-0 focus:!outline-none focus:!ring-0 focus:!border-0"
           value={inputText}
           onChange={handleChange}
