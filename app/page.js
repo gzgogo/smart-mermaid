@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Monitor, FileImage, RotateCcw, Maximize, RotateCw } from "lucide-react";
 import { Header } from "@/components/header";
 import { SettingsDialog } from "@/components/settings-dialog";
-import { DiagramTypeSelector } from "@/components/diagram-type-selector";
+
 import { ModelSelector } from "@/components/model-selector";
 import { MermaidEditor } from "@/components/mermaid-editor";
 import { MermaidRenderer } from "@/components/mermaid-renderer";
@@ -104,6 +104,7 @@ export default function Home() {
   const [currentConversation, setCurrentConversation] = useState(null); // 当前对话详情
   const [conversationContext, setConversationContext] = useState([]); // 对话上下文（包含历史Mermaid代码）
   const [showConversationPopup, setShowConversationPopup] = useState(false); // 弹出面板状态
+  const [isCreationMode, setIsCreationMode] = useState(true); // 创建模式状态
   
   const maxChars = parseInt(process.env.NEXT_PUBLIC_MAX_CHARS || "20000");
   const maxConversationRounds = parseInt(process.env.NEXT_PUBLIC_MAX_CONVERSATION_ROUNDS || "10");
@@ -171,24 +172,15 @@ export default function Home() {
   };
 
   // 创建新对话
-  const handleCreateConversation = async (initialContent) => {
-    const newConversation = {
-      id: Date.now().toString(),
-      title: generateConversationTitle(initialContent),
-      createdAt: Date.now(),
-      messages: []
-    };
-
-    const updatedConversations = [...conversations, newConversation];
-    setConversations(updatedConversations);
-    setCurrentConversationId(newConversation.id);
-    setCurrentConversation(newConversation);
+  // 创建对话 - 进入创建模式
+  const handleCreateConversation = () => {
+    // 清空当前对话
+    setCurrentConversationId(null);
+    setCurrentConversation(null);
     setConversationContext([]);
     
-    saveConversationHistory(updatedConversations);
-
-    // 立即发送初始消息
-    handleSendMessage(initialContent);
+    // 进入创建模式
+    setIsCreationMode(true);
   };
 
   // 选择对话
@@ -206,6 +198,10 @@ export default function Home() {
       } else {
         setMermaidCode("");
       }
+      
+      // 退出创建模式
+      setIsCreationMode(false);
+      setShowConversationPopup(false);
     }
   };
 
@@ -237,6 +233,32 @@ export default function Home() {
     const words = content.trim().split(/\s+/);
     const title = words.slice(0, 8).join(' ');
     return title.length > 30 ? title.substring(0, 30) + '...' : title;
+  };
+
+  // 从创建模式生成图表
+  const handleGenerateFromCreation = async (inputText) => {
+    // 创建新对话
+    const newConversation = {
+      id: Date.now().toString(),
+      title: generateConversationTitle(inputText),
+      createdAt: new Date().toISOString(),
+      messages: []
+    };
+
+    // 更新对话列表
+    const updatedConversations = [newConversation, ...conversations];
+    setConversations(updatedConversations);
+    setCurrentConversationId(newConversation.id);
+    setCurrentConversation(newConversation);
+    
+    // 保存到本地存储
+    saveConversationHistory(updatedConversations);
+    
+    // 切换到对话模式
+    setIsCreationMode(false);
+    
+    // 发送消息生成图表
+    await handleSendMessage(inputText);
   };
 
   // 发送消息
@@ -457,8 +479,8 @@ export default function Home() {
                 onCreateConversation={handleCreateConversation}
                 onShowHistory={() => setShowConversationPopup(true)}
                 isGenerating={isGenerating}
-                streamingContent={streamingContent}
-                isStreaming={isStreaming}
+                      streamingContent={streamingContent}
+                      isStreaming={isStreaming}
                 conversationsCount={conversations.length}
                 maxConversationRounds={maxConversationRounds}
                 mermaidCode={mermaidCode}
@@ -467,6 +489,8 @@ export default function Home() {
                 isFixing={isFixing}
                 diagramType={diagramType}
                 onDiagramTypeChange={handleDiagramTypeChange}
+                isCreationMode={isCreationMode}
+                onGenerateFromCreation={handleGenerateFromCreation}
               />
             </div>
             
@@ -476,10 +500,6 @@ export default function Home() {
               <div className="h-12 flex justify-between items-center flex-shrink-0 mb-4">
                 <div className="flex items-center gap-2">
                   <ModelSelector onModelChange={handleModelChange} />
-                  <DiagramTypeSelector 
-                    value={diagramType} 
-                    onChange={handleDiagramTypeChange} 
-                  />
                 </div>
 
                 <div className="flex items-center gap-2">
