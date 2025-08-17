@@ -2,19 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Wand2, PanelLeftClose, PanelLeftOpen, Monitor, FileImage, RotateCcw, Maximize, RotateCw, MessageSquare, History } from "lucide-react";
+import { Monitor, FileImage, RotateCcw, Maximize, RotateCw } from "lucide-react";
 import { Header } from "@/components/header";
 import { SettingsDialog } from "@/components/settings-dialog";
-import { TextInput } from "@/components/text-input";
-import { FileUpload } from "@/components/file-upload";
 import { DiagramTypeSelector } from "@/components/diagram-type-selector";
 import { ModelSelector } from "@/components/model-selector";
 import { MermaidEditor } from "@/components/mermaid-editor";
 import { MermaidRenderer } from "@/components/mermaid-renderer";
-import { ConversationHistory } from "@/components/conversation-history";
+import { ChatInterface } from "@/components/chat-interface";
+import { ConversationPopup } from "@/components/conversation-popup";
 // import { ExcalidrawRenderer } from "@/components/excalidraw-renderer";
 import { generateMermaidFromText } from "@/lib/ai-service";
 import { isWithinCharLimit } from "@/lib/utils";
@@ -81,7 +78,6 @@ const getRemainingUsage = () => {
 
 
 export default function Home() {
-  const [inputText, setInputText] = useState("");
   const [mermaidCode, setMermaidCode] = useState("");
   const [diagramType, setDiagramType] = useState("auto");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -94,8 +90,7 @@ export default function Home() {
   const [passwordVerified, setPasswordVerified] = useState(false);
   const [hasCustomConfig, setHasCustomConfig] = useState(false);
   
-  // 新增状态：左侧面板折叠和渲染模式
-  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
+  // 渲染模式状态
   const [renderMode, setRenderMode] = useState("excalidraw"); // "excalidraw" | "mermaid"
   const [isFixing, setIsFixing] = useState(false);
 
@@ -103,12 +98,15 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [hasError, setHasError] = useState(false);
 
-  // 连续对话状态管理
-  const [conversations, setConversations] = useState([]);
-  const [showConversationHistory, setShowConversationHistory] = useState(false);
-  const [conversationContext, setConversationContext] = useState([]);
+  // 连续对话状态管理 - 重新设计
+  const [conversations, setConversations] = useState([]); // 对话任务列表
+  const [currentConversationId, setCurrentConversationId] = useState(null); // 当前对话ID
+  const [currentConversation, setCurrentConversation] = useState(null); // 当前对话详情
+  const [conversationContext, setConversationContext] = useState([]); // 对话上下文（包含历史Mermaid代码）
+  const [showConversationPopup, setShowConversationPopup] = useState(false); // 弹出面板状态
   
   const maxChars = parseInt(process.env.NEXT_PUBLIC_MAX_CHARS || "20000");
+  const maxConversationRounds = parseInt(process.env.NEXT_PUBLIC_MAX_CONVERSATION_ROUNDS || "10");
 
   useEffect(() => {
     // Update remaining usage count on component mount
@@ -124,9 +122,22 @@ export default function Home() {
   // 加载对话历史
   const loadConversationHistory = () => {
     try {
-      const savedConversations = localStorage.getItem('conversationHistory');
+      const savedConversations = localStorage.getItem('chartConversations');
       if (savedConversations) {
-        setConversations(JSON.parse(savedConversations));
+        const parsed = JSON.parse(savedConversations);
+        setConversations(parsed);
+        // 如果有对话，默认选择最新的一个
+        if (parsed.length > 0) {
+          const latestConversation = parsed[parsed.length - 1];
+          setCurrentConversationId(latestConversation.id);
+          setCurrentConversation(latestConversation);
+          updateConversationContext(latestConversation);
+          // 显示最新的Mermaid代码
+          if (latestConversation.messages && latestConversation.messages.length > 0) {
+            const lastMessage = latestConversation.messages[latestConversation.messages.length - 1];
+            setMermaidCode(lastMessage.mermaidCode);
+          }
+        }
       }
     } catch (error) {
       console.error('Failed to load conversation history:', error);
@@ -136,84 +147,183 @@ export default function Home() {
   // 保存对话历史
   const saveConversationHistory = (newConversations) => {
     try {
-      localStorage.setItem('conversationHistory', JSON.stringify(newConversations));
+      localStorage.setItem('chartConversations', JSON.stringify(newConversations));
     } catch (error) {
       console.error('Failed to save conversation history:', error);
     }
   };
 
-  // 添加新对话
-  const addConversation = (userMessage, mermaidCode, diagramType) => {
-    const newConversation = {
-      id: Date.now().toString(),
-      timestamp: Date.now(),
-      userMessage,
-      mermaidCode,
-      diagramType,
-    };
-    
-    const updatedConversations = [...conversations, newConversation];
-    setConversations(updatedConversations);
-    saveConversationHistory(updatedConversations);
-    
-    // 更新对话上下文（保留最近的3轮对话）
-    const contextMessages = updatedConversations.slice(-3).flatMap(conv => [
-      { role: "user", content: conv.userMessage },
-      { role: "assistant", content: `生成的Mermaid代码：\n${conv.mermaidCode}` }
-    ]);
-    setConversationContext(contextMessages);
-  };
-
-  // 清空对话历史
-  const clearConversationHistory = () => {
-    setConversations([]);
-    setConversationContext([]);
-    localStorage.removeItem('conversationHistory');
-    toast.success("对话历史已清空");
-  };
-
-  // 导出对话历史
-  const exportConversationHistory = () => {
-    if (conversations.length === 0) {
-      toast.error("没有对话记录可导出");
+  // 更新对话上下文
+  const updateConversationContext = (conversation) => {
+    if (!conversation || !conversation.messages) {
+      setConversationContext([]);
       return;
     }
 
-    const exportData = {
-      exportTime: new Date().toISOString(),
-      conversations: conversations.map(conv => ({
-        ...conv,
-        timestamp: new Date(conv.timestamp).toISOString()
-      }))
+    // 构建对话上下文，包含历史Mermaid代码
+    const contextMessages = conversation.messages.flatMap(msg => [
+      { role: "user", content: msg.userMessage },
+      { role: "assistant", content: `Mermaid代码：\n${msg.mermaidCode}` }
+    ]);
+    
+    // 保留最近5轮对话的上下文
+    setConversationContext(contextMessages.slice(-10));
+  };
+
+  // 创建新对话
+  const handleCreateConversation = async (initialContent) => {
+    const newConversation = {
+      id: Date.now().toString(),
+      title: generateConversationTitle(initialContent),
+      createdAt: Date.now(),
+      messages: []
     };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { 
-      type: 'application/json' 
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `conversation-history-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const updatedConversations = [...conversations, newConversation];
+    setConversations(updatedConversations);
+    setCurrentConversationId(newConversation.id);
+    setCurrentConversation(newConversation);
+    setConversationContext([]);
     
-    toast.success("对话历史已导出");
+    saveConversationHistory(updatedConversations);
+
+    // 立即发送初始消息
+    handleSendMessage(initialContent);
   };
 
-  // 点击历史消息时填充到输入框
-  const handleHistoryMessageClick = (message) => {
-    setInputText(message);
-    toast.success("已将消息填充到输入框");
+  // 选择对话
+  const handleSelectConversation = (conversationId) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (conversation) {
+      setCurrentConversationId(conversationId);
+      setCurrentConversation(conversation);
+      updateConversationContext(conversation);
+      
+      // 显示该对话的最新Mermaid代码
+      if (conversation.messages && conversation.messages.length > 0) {
+        const lastMessage = conversation.messages[conversation.messages.length - 1];
+        setMermaidCode(lastMessage.mermaidCode);
+      } else {
+        setMermaidCode("");
+      }
+    }
   };
 
-  const handleTextChange = (text) => {
-    setInputText(text);
+  // 删除对话
+  const handleDeleteConversation = (conversationId) => {
+    const updatedConversations = conversations.filter(c => c.id !== conversationId);
+    setConversations(updatedConversations);
+    saveConversationHistory(updatedConversations);
+    
+    if (currentConversationId === conversationId) {
+      if (updatedConversations.length > 0) {
+        // 选择第一个可用的对话
+        const firstConversation = updatedConversations[0];
+        handleSelectConversation(firstConversation.id);
+      } else {
+        // 没有对话了，清空状态
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+        setConversationContext([]);
+        setMermaidCode("");
+      }
+    }
+    
+    toast.success("对话已删除");
   };
 
-  const handleFileTextExtracted = (text) => {
-    setInputText(text);
+  // 生成对话标题
+  const generateConversationTitle = (content) => {
+    const words = content.trim().split(/\s+/);
+    const title = words.slice(0, 8).join(' ');
+    return title.length > 30 ? title.substring(0, 30) + '...' : title;
+  };
+
+  // 发送消息
+  const handleSendMessage = async (message) => {
+    if (!currentConversation) {
+      toast.error("请先创建或选择一个对话");
+      return;
+    }
+
+    // 检查对话轮数限制
+    const currentRounds = currentConversation?.messages?.length || 0;
+    if (currentRounds >= maxConversationRounds) {
+      toast.error(`每个对话最多支持${maxConversationRounds}轮，请创建新对话继续`);
+      return;
+    }
+
+    // 检查使用限制
+    const hasUnlimited = hasUnlimitedAccess();
+    if (!hasUnlimited && !checkUsageLimit()) {
+      setShowLimitDialog(true);
+      return;
+    }
+
+    setIsGenerating(true);
+    setIsStreaming(true);
+    setStreamingContent("");
+
+    try {
+      const { mermaidCode: generatedCode, error } = await generateMermaidFromText(
+        message,
+        diagramType,
+        handleStreamChunk,
+        conversationContext
+      );
+
+      if (error) {
+        toast.error(error);
+        return;
+      }
+
+      if (!generatedCode) {
+        toast.error("生成图表失败，请重试");
+        return;
+      }
+
+      // 创建新消息
+      const newMessage = {
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        userMessage: message,
+        mermaidCode: generatedCode
+      };
+
+      // 更新当前对话
+      const updatedConversation = {
+        ...currentConversation,
+        messages: [...(currentConversation.messages || []), newMessage]
+      };
+
+      // 更新对话列表
+      const updatedConversations = conversations.map(c => 
+        c.id === currentConversationId ? updatedConversation : c
+      );
+
+      setConversations(updatedConversations);
+      setCurrentConversation(updatedConversation);
+      setMermaidCode(generatedCode);
+      
+      // 更新上下文
+      updateConversationContext(updatedConversation);
+      
+      saveConversationHistory(updatedConversations);
+
+      // 增加使用量
+      if (!hasUnlimited) {
+        incrementUsage();
+        setRemainingUsage(getRemainingUsage());
+      }
+
+      toast.success("图表已更新");
+    } catch (error) {
+      console.error("Generation error:", error);
+      toast.error("生成图表时发生错误");
+    } finally {
+      setIsGenerating(false);
+      setIsStreaming(false);
+    }
   };
 
   const handleDiagramTypeChange = (type) => {
@@ -249,11 +359,6 @@ export default function Home() {
   const handleErrorChange = (error, hasErr) => {
     setErrorMessage(error);
     setHasError(hasErr);
-  };
-
-  // 切换左侧面板
-  const toggleLeftPanel = () => {
-    setIsLeftPanelCollapsed(!isLeftPanelCollapsed);
   };
 
   // 切换渲染模式
@@ -328,70 +433,7 @@ export default function Home() {
     }
   };
 
-  const handleGenerateClick = async () => {
-    if (!inputText.trim()) {
-      toast.error("请输入文本内容");
-      return;
-    }
 
-    if (!isWithinCharLimit(inputText, maxChars)) {
-      toast.error(`文本超过${maxChars}字符限制`);
-      return;
-    }
-
-    // 检查是否有无限量权限（密码验证通过或有自定义AI配置）
-    const hasUnlimited = hasUnlimitedAccess();
-    
-    // 如果没有无限量权限，则检查使用限制（但不增加使用量）
-    if (!hasUnlimited) {
-      if (!checkUsageLimit()) {
-        setShowLimitDialog(true);
-        return;
-      }
-    }
-
-    setIsGenerating(true);
-    setIsStreaming(true);
-    setStreamingContent("");
-
-    try {
-      const { mermaidCode: generatedCode, error } = await generateMermaidFromText(
-        inputText,
-        diagramType,
-        handleStreamChunk,
-        conversationContext // 传递对话上下文
-      );
-
-      if (error) {
-        toast.error(error);
-        return;
-      }
-
-      if (!generatedCode) {
-        toast.error("生成图表失败，请重试");
-        return;
-      }
-
-      // 只有在API调用成功后才增加使用量
-      if (!hasUnlimited) {
-        incrementUsage();
-        setRemainingUsage(getRemainingUsage());
-      }
-
-      setMermaidCode(generatedCode);
-      
-      // 添加到对话历史
-      addConversation(inputText, generatedCode, diagramType);
-      
-      toast.success("图表生成成功");
-    } catch (error) {
-      console.error("Generation error:", error);
-      toast.error("生成图表时发生错误");
-    } finally {
-      setIsGenerating(false);
-      setIsStreaming(false);
-    }
-  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -406,174 +448,41 @@ export default function Home() {
       
       <main className="flex-1 overflow-hidden">
         <div className="h-full p-4 md:p-6">
-          <div 
-            className={`h-full grid gap-4 md:gap-6 transition-all duration-300 ${
-              isLeftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3'
-            }`}
-          >
-            {/* 左侧面板 */}
-            <div className={`${
-              isLeftPanelCollapsed ? 'hidden md:hidden' : 'col-span-1'
-            } flex flex-col h-full overflow-hidden`}>
-              
-              {/* 历史按钮 */}
-              <div className="h-auto flex items-center justify-between gap-2 flex-shrink-0 pb-2 mb-4">
-                <h2 className="text-lg font-semibold">
-                  {showConversationHistory ? "对话历史" : "输入内容"}
-                </h2>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowConversationHistory(!showConversationHistory)}
-                  className="h-9"
-                  title={showConversationHistory ? "返回输入" : "查看对话历史"}
-                >
-                  {showConversationHistory ? (
-                    <>
-                      <MessageSquare className="h-4 w-4" />
-                      <span className="hidden sm:inline ml-2">返回输入</span>
-                    </>
-                  ) : (
-                    <>
-                      <History className="h-4 w-4" />
-                      <span className="hidden sm:inline ml-2">历史({conversations.length})</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* 对话历史面板或输入面板切换 */}
-              {showConversationHistory ? (
-                <div className="flex-1 overflow-hidden">
-                  <ConversationHistory
-                    conversations={conversations}
-                    onClear={clearConversationHistory}
-                    onExport={exportConversationHistory}
-                    onMessageClick={handleHistoryMessageClick}
-                    currentInputText={inputText}
-                  />
-                </div>
-              ) : (
-              
-              <Tabs defaultValue="manual" className="flex flex-col h-full">
-                {/* 固定高度的顶部控制栏 */}
-                <div className="h-auto md:h-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-2 flex-shrink-0 pb-2 md:pb-0">
-                  <TabsList className="h-9 w-full md:w-auto">
-                    <TabsTrigger value="manual" className="flex-1 md:flex-none">手动输入</TabsTrigger>
-                    <TabsTrigger value="file" className="flex-1 md:flex-none">文件上传</TabsTrigger>
-                  </TabsList>
-                  <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
-                    <ModelSelector onModelChange={handleModelChange} />
-                    <div className="flex-1 md:flex-none min-w-0">
-                      <DiagramTypeSelector 
-                        value={diagramType} 
-                        onChange={handleDiagramTypeChange} 
-                      />
-                    </div>
-                  </div>
-                </div>
-                
-                {/* 主内容区域 */}
-                <div className="flex-1 flex flex-col overflow-hidden mt-2 md:mt-4">
-                  {/* 输入区域 - 固定高度 */}
-                  <div className="h-40 md:h-56 flex-shrink-0">
-                    <TabsContent value="manual" className="h-full mt-0">
-                      <TextInput 
-                        value={inputText} 
-                        onChange={handleTextChange} 
-                        maxChars={maxChars}
-                      />
-                    </TabsContent>
-                    <TabsContent value="file" className="h-full mt-0">
-                      <FileUpload onTextExtracted={handleFileTextExtracted} />
-                    </TabsContent>
-                  </div>
-
-                  {/* 生成按钮 - 固定高度 */}
-                  <div className="h-16 flex items-center flex-shrink-0">
-                    <Button 
-                      onClick={handleGenerateClick} 
-                      disabled={isGenerating || !inputText.trim() || !isWithinCharLimit(inputText, maxChars)}
-                      className="w-full h-10"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-background mr-2"></div>
-                          生成中...
-                        </>
-                      ) : (
-                        <>
-                          <Wand2 className="mr-2 h-4 w-4" />
-                          生成图表
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                  
-                  {/* 编辑器区域 - 占用剩余空间 */}
-                  <div className="flex-1 min-h-0">
-                    <MermaidEditor
-                      code={mermaidCode}
-                      onChange={handleMermaidCodeChange}
-                      streamingContent={streamingContent}
-                      isStreaming={isStreaming}
-                      errorMessage={errorMessage}
-                      hasError={hasError}
-                      onStreamChunk={handleStreamChunk}
-                    />
-                  </div>
-                </div>
-              </Tabs>
-              )}
+          <div className="h-full grid gap-4 md:gap-6 grid-cols-1 md:grid-cols-2">
+            {/* 左侧对话面板 */}
+            <div className="flex flex-col h-full overflow-hidden">
+              <ChatInterface
+                currentConversation={currentConversation}
+                onSendMessage={handleSendMessage}
+                onCreateConversation={handleCreateConversation}
+                onShowHistory={() => setShowConversationPopup(true)}
+                isGenerating={isGenerating}
+                streamingContent={streamingContent}
+                isStreaming={isStreaming}
+                conversationsCount={conversations.length}
+                maxConversationRounds={maxConversationRounds}
+                mermaidCode={mermaidCode}
+                onAutoFixMermaid={handleAutoFixMermaid}
+                onMermaidCodeChange={handleMermaidCodeChange}
+                isFixing={isFixing}
+                diagramType={diagramType}
+                onDiagramTypeChange={handleDiagramTypeChange}
+              />
             </div>
             
-            {/* 右侧面板 */}
-            <div className={`${
-              isLeftPanelCollapsed ? 'col-span-1' : 'col-span-1 md:col-span-2'
-            } flex flex-col h-full overflow-hidden`}>
+            {/* 右侧图表显示面板 */}
+            <div className="flex flex-col h-full overflow-hidden">
               {/* 控制按钮栏 - 固定高度 */}
-              <div className="h-12 flex justify-between items-center flex-shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleLeftPanel}
-                  className="h-9"
-                >
-                  {isLeftPanelCollapsed ? (
-                    <>
-                      <PanelLeftOpen className="h-4 w-4" />
-                      <span className="hidden sm:inline ml-2">显示编辑面板</span>
-                    </>
-                  ) : (
-                    <>
-                      <PanelLeftClose className="h-4 w-4" />
-                      <span className="hidden sm:inline ml-2">隐藏编辑面板</span>
-                    </>
-                  )}
-                </Button>
+              <div className="h-12 flex justify-between items-center flex-shrink-0 mb-4">
+                <div className="flex items-center gap-2">
+                  <ModelSelector onModelChange={handleModelChange} />
+                  <DiagramTypeSelector 
+                    value={diagramType} 
+                    onChange={handleDiagramTypeChange} 
+                  />
+                </div>
 
                 <div className="flex items-center gap-2">
-                  {/* <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAutoFixMermaid}
-                    disabled={!mermaidCode || isFixing || !hasError}
-                    className="h-9"
-                    title={hasError ? "使用AI智能修复代码问题" : "当前代码没有错误，无需修复"}
-                  >
-                    {isFixing ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-                        <span className="hidden lg:inline ml-2">修复中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="h-4 w-4" />
-                        <span className="hidden lg:inline ml-2">AI修复</span>
-                      </>
-                    )}
-                  </Button> */}
-
                   <Button
                     variant="outline"
                     size="sm"
@@ -631,8 +540,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 渲染器区域 - 占用剩余空间 */}
-              <div className="flex-1 min-h-0 mt-4" style={{ minHeight: '600px' }}>
+              {/* 图表渲染区域 */}
+              <div className="flex-1 min-h-0">
                 {renderMode === "excalidraw" ? (
                   <ExcalidrawRenderer
                     mermaidCode={mermaidCode}
@@ -716,6 +625,16 @@ export default function Home() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 对话历史弹出面板 */}
+      <ConversationPopup
+        isOpen={showConversationPopup}
+        onClose={() => setShowConversationPopup(false)}
+        conversations={conversations}
+        currentConversationId={currentConversationId}
+        onSelectConversation={handleSelectConversation}
+        onDeleteConversation={handleDeleteConversation}
+      />
     </div>
   );
 }
