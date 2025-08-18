@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, User, Code2, Copy, Expand, Minimize2, History, Plus, Wand2 } from "lucide-react";
+import { Send, User, Code2, Copy, Expand, Minimize2, History, Plus, Wand2, Move } from "lucide-react";
 import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import { DiagramTypeSelector } from "@/components/diagram-type-selector";
@@ -42,6 +42,190 @@ export function ChatInterface({
   const textareaRef = useRef(null);
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [isCodeExpanded, setIsCodeExpanded] = useState(false);
+  
+  // 代码卡片的位置和尺寸状态 - 恢复右上角默认位置
+  const [codeCardPosition, setCodeCardPosition] = useState({ x: 0, y: 0 });
+  const [codeCardSize, setCodeCardSize] = useState({ width: 256, height: 384 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  
+  // 使用 ref 存储实时位置和尺寸，避免状态更新导致的延迟
+  const positionRef = useRef({ x: 0, y: 0 });
+  const sizeRef = useRef({ width: 256, height: 384 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  
+  // 引用代码卡片DOM元素，用于直接操作
+  const codeCardRef = useRef(null);
+  
+  // 使用 ref 存储状态，避免 useCallback 依赖问题
+  const isDraggingRef = useRef(false);
+  const isResizingRef = useRef(false);
+
+  // 初始化右上角位置（仅在客户端）
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const defaultPosition = { x: window.innerWidth - 272, y: 0 };
+      setCodeCardPosition(defaultPosition);
+      positionRef.current = defaultPosition;
+    }
+  }, []);
+
+  // 从 localStorage 加载保存的位置和尺寸
+  useEffect(() => {
+    const savedPosition = localStorage.getItem('codeCardPosition');
+    const savedSize = localStorage.getItem('codeCardSize');
+    
+    if (savedPosition) {
+      try {
+        const position = JSON.parse(savedPosition);
+        setCodeCardPosition(position);
+        positionRef.current = position;
+      } catch (e) {
+        console.warn('Failed to parse saved position:', e);
+      }
+    }
+    
+    if (savedSize) {
+      try {
+        const size = JSON.parse(savedSize);
+        setCodeCardSize(size);
+        sizeRef.current = size;
+      } catch (e) {
+        console.warn('Failed to parse saved size:', e);
+      }
+    }
+  }, []);
+
+  // 保存位置和尺寸到 localStorage（延迟保存，避免频繁写入）
+  const saveCodeCardState = useCallback((position, size) => {
+    // 使用 setTimeout 延迟保存，避免拖动过程中频繁写入
+    setTimeout(() => {
+      try {
+        localStorage.setItem('codeCardPosition', JSON.stringify(position));
+        localStorage.setItem('codeCardSize', JSON.stringify(size));
+      } catch (e) {
+        console.warn('Failed to save code card state:', e);
+      }
+    }, 100);
+  }, []);
+
+  // 处理拖动开始
+  const handleDragStart = useCallback((e) => {
+    if (e.target.closest('button')) return; // 如果点击的是按钮，不开始拖动
+    
+    setIsDragging(true);
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      x: e.clientX - positionRef.current.x,
+      y: e.clientY - positionRef.current.y
+    };
+    e.preventDefault();
+  }, []);
+
+  // 处理拖动中 - 使用 ref 避免依赖问题
+  const handleDragMove = useCallback((e) => {
+    if (!isDraggingRef.current) return;
+    
+    const newX = e.clientX - dragStartRef.current.x;
+    const newY = e.clientY - dragStartRef.current.y;
+    
+    // 限制在视窗范围内
+    const maxX = (typeof window !== 'undefined' ? window.innerWidth : 1200) - sizeRef.current.width - 16;
+    const maxY = (typeof window !== 'undefined' ? window.innerHeight : 800) - sizeRef.current.height - 16;
+    
+    const clampedX = Math.max(16, Math.min(newX, maxX));
+    const clampedY = Math.max(0, Math.min(newY, maxY));
+    
+    // 直接更新位置，确保实时响应
+    positionRef.current = { x: clampedX, y: clampedY };
+    setCodeCardPosition({ x: clampedX, y: clampedY });
+  }, []); // 无依赖
+
+  // 处理拖动结束
+  const handleDragEnd = useCallback(() => {
+    if (isDraggingRef.current) {
+      setIsDragging(false);
+      isDraggingRef.current = false;
+      saveCodeCardState(positionRef.current, sizeRef.current);
+    }
+  }, [saveCodeCardState]);
+
+  // 处理缩放开始
+  const handleResizeStart = useCallback((e, direction) => {
+    setIsResizing(true);
+    isResizingRef.current = true;
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: sizeRef.current.width,
+      height: sizeRef.current.height
+    };
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  // 处理缩放中 - 使用 ref 避免依赖问题
+  const handleResizeMove = useCallback((e) => {
+    if (!isResizingRef.current || !codeCardRef.current) return;
+    
+    const deltaX = e.clientX - resizeStartRef.current.x;
+    const deltaY = e.clientY - resizeStartRef.current.y;
+    
+    let newWidth = resizeStartRef.current.width + deltaX;
+    let newHeight = resizeStartRef.current.height + deltaY;
+    
+    // 限制最小和最大尺寸
+    newWidth = Math.max(200, Math.min(newWidth, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 32));
+    newHeight = Math.max(200, Math.min(newHeight, (typeof window !== 'undefined' ? window.innerHeight : 800) - 100));
+    
+    // 直接操作DOM，绕过React状态更新，确保实时响应
+    const cardElement = codeCardRef.current;
+    cardElement.style.width = `${newWidth}px`;
+    cardElement.style.height = `${newHeight}px`;
+    
+    // 同时更新ref，用于后续计算
+    sizeRef.current = { width: newWidth, height: newHeight };
+  }, []); // 无依赖
+
+  // 处理缩放结束
+  const handleResizeEnd = useCallback(() => {
+    if (isResizingRef.current) {
+      setIsResizing(false);
+      isResizingRef.current = false;
+      // 缩放结束后，同步React状态
+      setCodeCardSize(sizeRef.current);
+      saveCodeCardState(positionRef.current, sizeRef.current);
+    }
+  }, [saveCodeCardState]);
+
+  // 添加全局鼠标事件监听器 - 使用稳定的函数引用
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isDraggingRef.current) {
+        handleDragMove(e);
+      } else if (isResizingRef.current) {
+        handleResizeMove(e);
+      }
+    };
+    
+    const handleMouseUp = () => {
+      if (isDraggingRef.current) {
+        handleDragEnd();
+      } else if (isResizingRef.current) {
+        handleResizeEnd();
+      }
+    };
+    
+    // 始终绑定事件监听器，避免重复绑定
+    document.addEventListener('mousemove', handleMouseMove, { passive: true });
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleDragMove, handleDragEnd, handleResizeMove, handleResizeEnd]); // 依赖稳定的函数引用
 
   // 自动滚动到底部
   useEffect(() => {
@@ -238,54 +422,82 @@ export function ChatInterface({
           <>
             {/* 浮动代码框 */}
             {(mermaidCode || streamingContent || isStreaming) && (
-              <div className={`absolute top-0 right-4 z-10 transition-all duration-300 ${
-                isCodeExpanded ? "inset-4 bottom-24" : "w-64 h-96"
-              }`}>
+              <div 
+                ref={codeCardRef}
+                className={`absolute z-10 ${
+                  isCodeExpanded ? "inset-4 bottom-24" : ""
+                }`}
+                style={!isCodeExpanded ? {
+                  left: `${codeCardPosition.x}px`,
+                  top: `${codeCardPosition.y}px`,
+                  width: `${codeCardSize.width}px`,
+                  height: `${codeCardSize.height}px`
+                } : {}}
+              >
                 <Card className="border-2 border-gray-200 shadow-lg bg-white h-full p-0">
                   {!isCodeExpanded ? (
-                    // 缩小版 - 右上角中等尺寸
+                    // 缩小版 - 可拖动和缩放
                     <div className="h-full flex flex-col">
-                      <div className="flex items-center justify-end gap-1 p-1 bg-gray-50 border-b rounded-t-xl">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={onAutoFixMermaid}
-                          disabled={!mermaidCode || isFixing || isStreaming}
-                          className="h-6 w-6 p-0"
-                          title="AI修复代码"
-                        >
-                          {isFixing ? (
-                            <div className="animate-spin rounded-full h-3 w-3 border-b border-gray-600"></div>
-                          ) : (
-                            <Wand2 className="h-3 w-3" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleCopyCurrentCode}
-                          className="h-6 w-6 p-0"
-                          title="复制代码"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setIsCodeExpanded(true)}
-                          className="h-6 w-6 p-0"
-                          title="展开"
-                        >
-                          <Expand className="h-3 w-3" />
-                        </Button>
+                      <div 
+                        className="flex items-center justify-between p-1 bg-gray-50 border-b rounded-t-xl cursor-move select-none"
+                        onMouseDown={handleDragStart}
+                        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+                      >
+                        <div className="flex items-center gap-1">
+                          <Move className="h-3 w-3 text-gray-400" />
+                          <span className="text-xs text-gray-500">拖动移动</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={onAutoFixMermaid}
+                            disabled={!mermaidCode || isFixing || isStreaming}
+                            className="h-6 w-6 p-0"
+                            title="AI修复代码"
+                          >
+                            {isFixing ? (
+                              <div className="animate-spin rounded-full h-3 w-3 border-b border-gray-600"></div>
+                            ) : (
+                              <Wand2 className="h-3 w-3" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleCopyCurrentCode}
+                            className="h-6 w-6 p-0"
+                            title="复制代码"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsCodeExpanded(true)}
+                            className="h-6 w-6 p-0"
+                            title="展开"
+                          >
+                            <Expand className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex-1 overflow-hidden">
+                      <div className="flex-1 overflow-hidden relative">
                         <Textarea
                           value={isStreaming ? (streamingContent || "正在生成图表代码...") : mermaidCode}
                           onChange={(e) => onMermaidCodeChange && onMermaidCodeChange(e.target.value)}
                           className="text-xs bg-white rounded-b-xl border-0 p-2 h-full resize-none font-mono text-gray-800 !outline-none !ring-0 !border-0 focus:!outline-none focus:!ring-0 focus:!border-0"
                           disabled={isStreaming}
                           placeholder={isStreaming ? "正在生成图表代码..." : "Mermaid代码将在这里显示..."}
+                        />
+                        
+                        {/* 缩放手柄 */}
+                        <div 
+                          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+                          onMouseDown={(e) => handleResizeStart(e, 'se')}
+                          style={{
+                            background: 'linear-gradient(135deg, transparent 0%, transparent 50%, #9ca3af 50%, #9ca3af 100%)'
+                          }}
                         />
                       </div>
                     </div>
@@ -380,13 +592,13 @@ export function ChatInterface({
                           <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 mt-1">
                             <User className="h-4 w-4 text-gray-600" />
                           </div>
-                          <div className="flex-1 min-w-0">
+                          <div className="min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs text-muted-foreground">
                                 {formatTimestamp(message.timestamp)}
                               </span>
                             </div>
-                            <div className="bg-gray-50 rounded-lg p-3 w-1/2">
+                            <div className="bg-gray-50 rounded-lg p-3 min-w-[120px] max-w-[85%] inline-block">
                               <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
                                 {message.userMessage}
                               </p>
