@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Monitor, FileImage, RotateCcw, Maximize, RotateCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Header } from "@/components/header";
 import { SettingsDialog } from "@/components/settings-dialog";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import { ModelSelector } from "@/components/model-selector";
 import { MermaidEditor } from "@/components/mermaid-editor";
@@ -78,6 +79,9 @@ const getRemainingUsage = () => {
 
 
 export default function Home() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
   const [mermaidCode, setMermaidCode] = useState("");
   const [diagramType, setDiagramType] = useState("auto");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -104,7 +108,7 @@ export default function Home() {
   const [currentConversation, setCurrentConversation] = useState(null); // 当前对话详情
   const [conversationContext, setConversationContext] = useState([]); // 对话上下文（包含历史Mermaid代码）
 
-  const [isCreationMode, setIsCreationMode] = useState(true); // 创建模式状态
+  const [isCreationMode, setIsCreationMode] = useState(false); // 创建模式状态
   const [showLeftPanel, setShowLeftPanel] = useState(true); // 左侧面板显示状态
   
   const maxChars = parseInt(process.env.NEXT_PUBLIC_MAX_CHARS || "20000");
@@ -117,34 +121,61 @@ export default function Home() {
     setPasswordVerified(isPasswordVerified());
     // Check custom AI config status
     setHasCustomConfig(hasCustomAIConfig());
+    
+    // 从URL中获取对话ID
+    const conversationId = searchParams.get('id');
     // Load conversation history from localStorage
-    // 只有在非创建模式时才自动选择历史对话
-    loadConversationHistory(isCreationMode);
-  }, []);
+    loadConversationHistory(conversationId);
+  }, [searchParams]);
 
   // 加载对话历史
-  const loadConversationHistory = (skipAutoSelect = false) => {
+  const loadConversationHistory = (targetId = null) => {
     try {
       const savedConversations = localStorage.getItem('chartConversations');
       if (savedConversations) {
         const parsed = JSON.parse(savedConversations);
         setConversations(parsed);
-        // 只有在非创建模式下才自动选择最新对话
-        // 如果是创建模式（页面刷新后的默认状态），保持空白状态
-        if (parsed.length > 0 && !skipAutoSelect) {
-          const latestConversation = parsed[parsed.length - 1];
-          setCurrentConversationId(latestConversation.id);
-          setCurrentConversation(latestConversation);
-          updateConversationContext(latestConversation);
-          // 显示最新的Mermaid代码
-          if (latestConversation.messages && latestConversation.messages.length > 0) {
-            const lastMessage = latestConversation.messages[latestConversation.messages.length - 1];
-            setMermaidCode(lastMessage.mermaidCode);
+        
+        // 如果没有指定targetId，并且当前是创建模式，不要自动选择对话
+        if (!targetId && window.location.pathname === '/') {
+          setIsCreationMode(true);
+          return;
+        }
+        
+        if (parsed.length > 0) {
+          let targetConversation;
+          
+          if (targetId) {
+            // 如果指定了对话ID，查找对应的对话
+            targetConversation = parsed.find(c => c.id === targetId);
+            if (!targetConversation) {
+              // 如果找不到指定的对话，显示最新的对话
+              targetConversation = parsed[parsed.length - 1];
+              // 更新URL为最新对话的ID
+              router.replace(`?id=${targetConversation.id}`);
+            }
+            
+            setCurrentConversationId(targetConversation.id);
+            setCurrentConversation(targetConversation);
+            updateConversationContext(targetConversation);
+            setIsCreationMode(false);
+            
+            // 显示对话的最新Mermaid代码
+            if (targetConversation.messages && targetConversation.messages.length > 0) {
+              const lastMessage = targetConversation.messages[targetConversation.messages.length - 1];
+              setMermaidCode(lastMessage.mermaidCode);
+            }
           }
+        } else {
+          // 如果没有任何对话，进入创建模式
+          router.replace('/');
+          setIsCreationMode(true);
         }
       }
     } catch (error) {
       console.error('Failed to load conversation history:', error);
+      router.replace('/');
+      setIsCreationMode(true);
     }
   };
 
@@ -187,6 +218,9 @@ export default function Home() {
     
     // 进入创建模式
     setIsCreationMode(true);
+    
+    // 清除URL中的对话ID
+    router.replace('/');
   };
 
   // 选择对话
@@ -207,6 +241,9 @@ export default function Home() {
       
       // 退出创建模式
       setIsCreationMode(false);
+      
+      // 更新URL
+      router.replace(`?id=${conversationId}`);
     }
   };
 
@@ -646,8 +683,8 @@ export default function Home() {
                       <p className="text-xs text-gray-500 mt-3">AI正在分析您的描述并生成相应的图表代码</p>
                     </div>
                   </div>
-                ) : !mermaidCode ? (
-                  /* 空状态 */
+                ) : !mermaidCode && renderMode !== "excalidraw" ? (
+                  /* 空状态 - 仅在 Mermaid 模式下显示 */
                   <div className="h-full flex items-center justify-center bg-gray-50 border border-gray-200 rounded-lg">
                     <div className="text-center text-gray-500">
                       <Monitor className="h-12 w-12 mx-auto mb-3 opacity-50" />

@@ -268,11 +268,11 @@ function ExcalidrawRenderer({ mermaidCode, onErrorChange }) {
           <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
             <div className="text-center p-6 max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
               <p className="text-destructive mb-3 font-medium text-lg">Excalidraw 渲染失败</p>
-              <p className="text-sm text-muted-foreground mb-4">{renderError}</p>
+              {/* <p className="text-sm text-muted-foreground mb-4">{renderError}</p> */}
               {renderError.includes('不支持此图表类型') && (
                 <div className="space-y-2">
                   <p className="text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 p-3 rounded-md">
-                    💡 提示：此类型图表暂不支持在Excalidraw中显示，请点击右上角切换到"Mermaid"模式查看
+                    💡 提示：Excalidraw模式暂不支持此类型图表，请点击右上角切换到"Mermaid"模式查看
                   </p>
                   <p className="text-xs text-muted-foreground mt-2">
                     支持的图表类型：流程图、时序图、类图、饼图、状态图、实体关系图等
@@ -283,11 +283,7 @@ function ExcalidrawRenderer({ mermaidCode, onErrorChange }) {
           </div>
         )}
         
-        {!isRendering && !renderError && !mermaidCode && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-muted-foreground">请生成Mermaid代码以查看图表</p>
-          </div>
-        )}
+        
         
         <div className="w-full h-full">
           <Excalidraw
