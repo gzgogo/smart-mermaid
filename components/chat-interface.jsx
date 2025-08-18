@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, User, Code2, Copy, Expand, Minimize2, History, Plus, Wand2, Move } from "lucide-react";
+import { Send, User, Code2, Copy, Expand, Minimize2, History, Plus, Wand2, Move, MoreVertical } from "lucide-react";
 import { copyToClipboard } from "@/lib/utils";
 import { toast } from "sonner";
 import { DiagramTypeSelector } from "@/components/diagram-type-selector";
@@ -493,12 +493,12 @@ export function ChatInterface({
                         
                         {/* 缩放手柄 */}
                         <div 
-                          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+                          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize rounded-br-xl flex items-center justify-center text-gray-400 hover:text-gray-600"
                           onMouseDown={(e) => handleResizeStart(e, 'se')}
-                          style={{
-                            background: 'linear-gradient(135deg, transparent 0%, transparent 50%, #9ca3af 50%, #9ca3af 100%)'
-                          }}
-                        />
+                          title="拖拽调整大小"
+                        >
+                          <MoreVertical className="w-3 h-3 rotate-45" />
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -592,13 +592,13 @@ export function ChatInterface({
                           <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 mt-1">
                             <User className="h-4 w-4 text-gray-600" />
                           </div>
-                          <div className="min-w-0">
+                          <div className="min-w-[120px] max-w-[85%]">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs text-muted-foreground">
                                 {formatTimestamp(message.timestamp)}
                               </span>
                             </div>
-                            <div className="bg-gray-50 rounded-lg p-3 min-w-[120px] max-w-[85%] inline-block">
+                            <div className="bg-gray-50 rounded-lg p-3 inline-block">
                               <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">
                                 {message.userMessage}
                               </p>

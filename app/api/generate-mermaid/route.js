@@ -131,6 +131,20 @@ pie title 图表标题
 - 连线美观：所有箭头连线必须无交叉，连接精确，路径简洁
 - 标签清晰：步骤标签和说明文字不能被连线覆盖，位置要醒目易读
 
+**颜色使用指南**：
+- **必须使用style语法**为节点添加丰富的颜色，这确保了Mermaid和Excalidraw两种渲染模式的兼容性
+- **颜色方案推荐**：
+  * 开始节点：style nodeId fill:#4f46e5,stroke:#4338ca,color:#fff (深蓝色)
+  * 处理节点：style nodeId fill:#3b82f6,stroke:#2563eb,color:#fff (蓝色)
+  * 决策节点：style nodeId fill:#06b6d4,stroke:#0891b2,color:#fff (青色)
+  * 成功节点：style nodeId fill:#22c55e,stroke:#16a34a,color:#fff (绿色)
+  * 错误节点：style nodeId fill:#ef4444,stroke:#dc2626,color:#fff (红色)
+  * 警告节点：style nodeId fill:#f59e0b,stroke:#d97706,color:#fff (橙色)
+  * 信息节点：style nodeId fill:#8b5cf6,stroke:#7c3aed,color:#fff (紫色)
+- **语法格式**：在图表末尾添加每个节点的样式定义，格式为：style 节点ID fill:背景色,stroke:边框色,color:文字色
+- **颜色分配原则**：根据节点的功能类型分配颜色，同类型节点使用相同颜色
+- 确保文字颜色与背景色有足够的对比度，建议背景使用深色时文字用白色(#fff)
+
 **可选图表类型**：
 1. 流程图（Flowchart）：步骤说明、工作流程、任务执行顺序
 2. 思维导图（Mind Map）：概念发散、主题分类、灵感捕捉  
@@ -149,24 +163,43 @@ c) 确保图表清晰、易于理解，准确反映文档的内容和逻辑。
 
 d) 不要使用<artifact>标签包裹代码，而是直接以markdown格式返回代码,除了代码外不要返回其他内容。
 
-**正确的Mermaid语法示例**：
+**正确的Mermaid语法示例（带颜色）**：
 \`\`\`
 flowchart TD
     A["用户打开首页"] --> B["输入手机号"]
     B --> C["手机号格式正确"]
-    C -->|是| D["提示用户输入"]
+    C -->|是| D["提示用户重新输入"]
     C -->|否| E["输入验证码"]
     E --> F["验证码正确"]
-    F -->|是| G["跳转到设置密码"]
+    F -->|是| G["返回'验证码错误'"]
     F -->|否| H["设置密码"]
     H --> I["点击提交注册"]
     I --> J["信息完整"]
     J -->|是| K["返回'请完善注册信息'"]
     J -->|否| L["注册成功"]
     L --> M["跳转到欢迎页面"]
+    
+    %% 使用style语法为每个节点添加颜色
+    style A fill:#4f46e5,stroke:#4338ca,color:#fff
+    style B fill:#3b82f6,stroke:#2563eb,color:#fff
+    style C fill:#06b6d4,stroke:#0891b2,color:#fff
+    style D fill:#ef4444,stroke:#dc2626,color:#fff
+    style E fill:#3b82f6,stroke:#2563eb,color:#fff
+    style F fill:#06b6d4,stroke:#0891b2,color:#fff
+    style G fill:#ef4444,stroke:#dc2626,color:#fff
+    style H fill:#3b82f6,stroke:#2563eb,color:#fff
+    style I fill:#06b6d4,stroke:#0891b2,color:#fff
+    style J fill:#06b6d4,stroke:#0891b2,color:#fff
+    style K fill:#ef4444,stroke:#dc2626,color:#fff
+    style L fill:#22c55e,stroke:#16a34a,color:#fff
+    style M fill:#22c55e,stroke:#16a34a,color:#fff
 \`\`\`
 
-注意：节点ID(A,B,C等)必须是英文，中文内容放在双引号中的标签里。
+注意：
+- 节点ID(A,B,C等)必须是英文，中文内容放在双引号中的标签里
+- **必须使用style语法**为每个节点设置颜色，格式：style 节点ID fill:背景色,stroke:边框色,color:文字色
+- style语法在Mermaid和Excalidraw两种渲染模式下都完全兼容
+- 根据节点功能分配颜色：开始节点(深蓝)、处理节点(蓝色)、决策节点(青色)、错误节点(红色)、成功节点(绿色)
 `
 
 systemPrompt += `

@@ -74,29 +74,50 @@ function ExcalidrawRenderer({ mermaidCode, onErrorChange }) {
       // 预处理 mermaidCode: 移除 <br> 标签
       const preprocessedCode = mermaidCode.replace(/<br\s*\/?>/gi, '');
       
-      // 检查是否为不支持的图表类型
-      const unsupportedTypes = [
-        'gitGraph', 'git',           // Git相关图表
-        'journey', 'requirement',    // 用户旅程和需求图
-        'sankey',                    // 桑基图
-        'gantt',                     // 甘特图
-        'timeline',                  // 时间线图
-        'mindMap',                   // 思维导图
-        'matrixMap',                 // 矩阵图
-        'scenarioScript'             // 场景剧本图
+      // 检查是否为支持的图表类型（白名单）
+      const supportedTypes = [
+        'flowchart',                 // 流程图
+        'graph',                     // 图表（流程图的别名）
+        'sequenceDiagram',           // 时序图
+        'classDiagram',              // 类图
+        'pie',                       // 饼图
+        'stateDiagram',              // 状态图
+        'stateDiagram-v2'            // 状态图v2
       ];
-      const isUnsupported = unsupportedTypes.some(type => 
-        preprocessedCode.toLowerCase().includes(type.toLowerCase())
-      );
       
-      if (isUnsupported) {
+      // 检测图表类型
+      const detectDiagramType = (code) => {
+        const lines = code.trim().split('\n');
+        const firstLine = lines[0]?.trim().toLowerCase() || '';
+        
+        // 检查是否匹配支持的类型
+        for (const type of supportedTypes) {
+          if (firstLine.startsWith(type.toLowerCase()) || 
+              firstLine === type.toLowerCase()) {
+            return type;
+          }
+        }
+        
+        // 特殊处理：如果没有明确声明类型但包含flowchart特征，认为是flowchart
+        if (firstLine.match(/^(td|lr|bt|rl)\s*$/) || 
+            code.includes('-->') || 
+            code.includes('---')) {
+          return 'flowchart';
+        }
+        
+        return null;
+      };
+      
+      const detectedType = detectDiagramType(preprocessedCode);
+      
+      if (!detectedType) {
         throw new Error('Excalidraw模式暂不支持此图表类型，请切换到Mermaid模式查看');
       }
       
       const { elements, files } = await parseMermaidToExcalidraw(preprocessedCode);
       
       if (!elements || elements.length === 0) {
-        throw new Error('无法解析Mermaid代码，请检查语法或切换到Mermaid模式');
+        throw new Error('Excalidraw模式暂不支持此图表类型，请切换到Mermaid模式查看');
       }
       
       const convertedElements = convertToExcalidrawElements(elements);
@@ -116,15 +137,12 @@ function ExcalidrawRenderer({ mermaidCode, onErrorChange }) {
       }
     } catch (error) {
       console.error("Mermaid rendering error:", error);
-      const errorMsg = error.message;
+      
+      // 统一所有错误为类型不支持的提示
+      const errorMsg = 'Excalidraw模式暂不支持此图表类型，请切换到Mermaid模式查看';
       setRenderError(errorMsg);
       
-      // 根据错误类型显示不同的提示
-      if (errorMsg.includes('不支持此图表类型')) {
-        toast.error("当前图表类型在Excalidraw模式下不支持，请切换到Mermaid模式");
-      } else {
-        toast.error("图表渲染失败，请检查 Mermaid 代码语法或切换到Mermaid模式");
-      }
+      toast.error("当前图表类型在Excalidraw模式下不支持，请切换到Mermaid模式");
 
       // 通知父组件有错误，与 mermaid-renderer 保持一致
       if (onErrorChange) {
@@ -268,17 +286,17 @@ function ExcalidrawRenderer({ mermaidCode, onErrorChange }) {
           <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
             <div className="text-center p-6 max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
               <p className="text-destructive mb-3 font-medium text-lg">Excalidraw 渲染失败</p>
-              {/* <p className="text-sm text-muted-foreground mb-4">{renderError}</p> */}
-              {renderError.includes('不支持此图表类型') && (
-                <div className="space-y-2">
-                  <p className="text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 p-3 rounded-md">
-                    💡 提示：Excalidraw模式暂不支持此类型图表，请点击右上角切换到"Mermaid"模式查看
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    支持的图表类型：流程图、时序图、类图、饼图、状态图、实体关系图等
-                  </p>
-                </div>
-              )}
+              <div className="space-y-2">
+                <p className="text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 p-3 rounded-md">
+                  💡 提示：Excalidraw模式暂不支持此类型图表，请点击右上角切换到"Mermaid"模式查看
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  <span className="font-medium text-green-600">Excalidraw支持：</span>流程图(flowchart)、时序图(sequenceDiagram)、类图(classDiagram)、饼图(pie)、状态图(stateDiagram)
+                </p>
+                {/* <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-red-600">不支持：</span>实体关系图(erDiagram)、甘特图(gantt)、Git图(gitGraph)、用户旅程图(journey)、思维导图(mindmap)等
+                </p> */}
+              </div>
             </div>
           </div>
         )}

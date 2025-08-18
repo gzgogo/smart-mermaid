@@ -69,24 +69,78 @@ export function MermaidRenderer({ mermaidCode, onChange, onErrorChange }) {
         // Initialize mermaid with configuration
         mermaid.initialize({
           startOnLoad: false,
-          theme: 'default',
+          theme: 'base',  // 使用base主题，支持更好的自定义颜色
+          themeVariables: {
+            // 定义丰富的颜色主题
+            primaryColor: '#3b82f6',        // 蓝色
+            primaryTextColor: '#1f2937',    // 深灰色文字
+            primaryBorderColor: '#1d4ed8',  // 深蓝色边框
+            lineColor: '#6b7280',           // 灰色连线
+            sectionBkgColor: '#f3f4f6',     // 浅灰背景
+            altSectionBkgColor: '#e5e7eb',  // 交替背景色
+            gridColor: '#d1d5db',           // 网格色
+            secondaryColor: '#10b981',      // 绿色
+            tertiaryColor: '#f59e0b',       // 橙色
+            background: '#ffffff',          // 白色背景
+            mainBkg: '#3b82f6',            // 主要背景色
+            secondBkg: '#10b981',          // 次要背景色
+            tertiaryBkg: '#f59e0b',        // 第三背景色
+            primaryBorderColor: '#1d4ed8',
+            primaryTextColor: '#ffffff',
+            secondaryBorderColor: '#059669',
+            secondaryTextColor: '#ffffff',
+            tertiaryBorderColor: '#d97706',
+            tertiaryTextColor: '#ffffff',
+          },
           securityLevel: 'loose',
           flowchart: {
             useMaxWidth: true,
-            htmlLabels: true
+            htmlLabels: true,
+            curve: 'basis'  // 使用平滑曲线
           },
           sequence: {
             useMaxWidth: true,
-            wrap: true
+            wrap: true,
+            diagramMarginX: 50,
+            diagramMarginY: 10,
+            actorMargin: 50,
+            width: 150,
+            height: 65,
+            boxMargin: 10,
+            boxTextMargin: 5,
+            noteMargin: 10,
+            messageMargin: 35
           },
           gantt: {
-            useMaxWidth: true
+            useMaxWidth: true,
+            leftPadding: 75,
+            gridLineStartPadding: 35,
+            fontSize: 11,
+            fontFamily: '"Open-Sans", "sans-serif"',
+            numberSectionStyles: 4,
+            axisFormat: '%Y-%m-%d'
           },
           journey: {
-            useMaxWidth: true
+            useMaxWidth: true,
+            diagramMarginX: 50,
+            diagramMarginY: 10,
+            leftMargin: 150,
+            width: 150,
+            height: 50,
+            boxMargin: 10,
+            boxTextMargin: 5,
+            noteMargin: 10,
+            messageMargin: 35
           },
           pie: {
-            useMaxWidth: true
+            useMaxWidth: true,
+            textPosition: 0.75
+          },
+          git: {
+            useMaxWidth: true,
+            mainBranchName: 'main',
+            showBranches: true,
+            showCommitLabel: true
           }
         });
 
